@@ -1,0 +1,54 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: observability
+      POSTGRES_PASSWORD: observability
+      POSTGRES_DB: observability
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U observability -d observability"]
+      interval: 4s
+      retries: 20
+    ports:
+      - "127.0.0.1:5432:5432"
+  api:
+    build: .
+    environment:
+      DATABASE_URL: postgresql+psycopg://observability:observability@postgres:5432/observability
+    command: sh -c "python -m observability.cli seed && python -m uvicorn observability.api:app --host 0.0.0.0 --port 8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3)"]
+      interval: 5s
+      timeout: 4s
+      start_period: 60s
+      retries: 20
+  dashboard:
+    build: .
+    environment:
+      API_BASE_URL: http://api:8000
+      DATABASE_URL: postgresql+psycopg://observability:observability@postgres:5432/observability
+    command: python -m streamlit run dashboard.py --server.address 0.0.0.0 --server.port 8501 --server.headless true
+    depends_on:
+      - api
+    ports:
+      - "127.0.0.1:8501:8501"
+  scheduler:
+    build: .
+    environment:
+      DATABASE_URL: postgresql+psycopg://observability:observability@postgres:5432/observability
+      SCHEDULER_INTERVAL_SECONDS: ${SCHEDULER_INTERVAL_SECONDS:-300}
+    command: python -m observability.scheduler
+    volumes:
+      - ./logs:/app/logs
+    depends_on:
+      api:
+        condition: service_healthy
+volumes:
+  pgdata:

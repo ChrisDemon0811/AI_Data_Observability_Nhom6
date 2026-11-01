@@ -1,0 +1,14 @@
+NHOM 6 - DEMO DATA OBSERVABILITY
+
+1) Chay file run_demo.bat, mo http://127.0.0.1:8501
+2) TV1: Tab 01, gioi thieu kien truc + lineage, bam Normal
+3) TV2: Bam late_data, null_values, duplicate_keys, schema_change; xem tab 02
+4) TV3: Bam distribution_drift; xem tab 03 (JS divergence, amount drift, Isolation Forest)
+5) TV4: Tab 04; minh hoa incident, SLA, ACKNOWLEDGED, RESOLVED
+6) TV5: Bam upstream_failure; tab 05 AI RCA, evidence, checklist
+
+Dashboard: http://127.0.0.1:8501
+Swagger: http://127.0.0.1:8000/docs
+
+Luu y: toan bo giao dich la du lieu gia lap, AI dua ra gia thuyet can xac minh.
+Xem README.md de doc huong dan tieng Viet co dau day du.

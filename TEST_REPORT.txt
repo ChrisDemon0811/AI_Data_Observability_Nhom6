@@ -1,0 +1,20 @@
+NHOM 6 - AI DATA OBSERVABILITY - KIEM THU
+
+Ma nguon: Python 3.13.5 (kiem tra trong moi truong tao artifact)
+Lenh test: python -m pytest -q tests/test_system.py
+Ket qua: 11 passed (kiem tra ngay 10/10/2026)
+
+Pham vi da kiem tra:
+- 8 kịch bản dữ liệu: bình thường + 7 lỗi
+- Seed dữ liệu 16 lần chạy, tạo incident
+- RCA dựa vào telemetry upstream và check failures
+- Transition ACKNOWLEDGED -> RESOLVED, incident timeline
+- FastAPI qua TestClient /api/health, /api/seed, /api/summary, /api/runs, /api/incidents, /api/lineage
+- Toan bo .py da qua compileall (kiem tra cu phap)
+
+Han che trong moi truong tao artifact:
+- Khong co package Streamlit, khong co mang de cai moi. Do do KHONG the mo dashboard do hoa thuc te o moi truong nay.
+- Khi nguoi dung chay run_demo.bat tren PC co Internet, pip se cai Streamlit va cac thu vien tu requirements.txt.
+- Khong chay thu Docker Compose/PostgreSQL o moi truong tao artifact, nhung YAML va Dockerfile da duoc cung cap.
+
+API va business logic da duoc kiem thu tu dong, nhung production use can auth, monitoring, real ingestion va evaluation.
