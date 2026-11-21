@@ -1,5 +1,7 @@
 # Task 1 — Kiến trúc, pipeline mẫu và APScheduler
 
+> Đây là hướng dẫn Task 1 và báo cáo của giai đoạn triển khai trước. Bản mở rộng đủ 5 task (Z-score, KS, notification mock, LLM RCA, bảng pipeline_events và kết quả test mới nhất) được mô tả trong [README.md](README.md) và [TASK_CHECKLIST.md](TASK_CHECKLIST.md).
+
 Hướng dẫn cho workspace AI Data Observability Nhóm 6. Các lệnh Windows bên dưới chạy tại thư mục gốc project, dùng Python trong `.venv`. Không cần reset database để cập nhật Task 1.
 
 ## 1. Thành phần và kiến trúc

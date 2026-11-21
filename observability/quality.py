@@ -74,14 +74,14 @@ def evaluate_quality(batch, baseline):
     lag = batch.source_freshness_minutes
 
     checks = [
-        CheckResult("freshness", "Tính mới của dữ liệu (Freshness)", lag <= CHECK_LIMITS["freshness_minutes"], "HIGH", round(lag, 3), "≤ 60 phút", "Độ trễ sự kiện mới nhất so với lúc chạy pipeline."),
-        CheckResult("completeness", "Tính đầy đủ (Completeness)", completeness >= CHECK_LIMITS["completeness"], "HIGH", round(completeness, 4), "≥ 98%", "Tỷ lệ ô không NULL trong các trường quan trọng."),
-        CheckResult("uniqueness", "Tính duy nhất (Uniqueness)", uniqueness >= CHECK_LIMITS["uniqueness"], "HIGH", round(uniqueness, 4), "≥ 99,5%", "Tỷ lệ order_id không trùng lặp."),
+        CheckResult("freshness", "Tính mới của dữ liệu (Freshness)", lag <= CHECK_LIMITS["freshness_minutes"], "HIGH", round(lag, 3), f"≤ {CHECK_LIMITS['freshness_minutes']:g} phút", "Độ trễ sự kiện mới nhất so với lúc chạy pipeline."),
+        CheckResult("completeness", "Tính đầy đủ (Completeness)", completeness >= CHECK_LIMITS["completeness"], "HIGH", round(completeness, 4), f"≥ {CHECK_LIMITS['completeness']:.2%}", "Tỷ lệ ô không NULL trong các trường quan trọng."),
+        CheckResult("uniqueness", "Tính duy nhất (Uniqueness)", uniqueness >= CHECK_LIMITS["uniqueness"], "HIGH", round(uniqueness, 4), f"≥ {CHECK_LIMITS['uniqueness']:.2%}", "Tỷ lệ order_id không trùng lặp."),
         CheckResult("schema", "Tương thích schema", schema_match == 1.0, "CRITICAL", schema_match, "Đủ các cột chuẩn", f"Cột bị thiếu: {schema_missing or 'không'}; cột mới: {schema_added or 'không'}."),
-        CheckResult("validity", "Tính hợp lệ của phương thức thanh toán", validity >= CHECK_LIMITS["payment_validity"], "MEDIUM", round(validity, 4), "≥ 99%", "Kiểm tra payment_method thuộc tập giá trị chấp nhận."),
-        CheckResult("distribution_drift", "Trôi phân phối (JS divergence)", js <= CHECK_LIMITS["distribution_js"], "MEDIUM", round(js, 4), "≤ 0,12", "So sánh phân phối phương thức thanh toán với baseline khỏe mạnh."),
-        CheckResult("amount_drift", "Biến động giá trị đơn trung bình", (1/CHECK_LIMITS["amount_mean_ratio"]) <= mean_ratio <= CHECK_LIMITS["amount_mean_ratio"], "MEDIUM", round(mean_ratio, 4), "0,667–1,5 × baseline", "Tỷ số giá trị đơn hàng trung bình so với baseline."),
-        CheckResult("volume", "Bất thường số bản ghi", CHECK_LIMITS["volume_ratio_low"] <= vol_ratio <= CHECK_LIMITS["volume_ratio_high"], "MEDIUM", round(vol_ratio, 4), "0,6–1,5 × baseline", "Kiểm tra tăng hoặc giảm đột biến khối lượng dữ liệu."),
+        CheckResult("validity", "Tính hợp lệ của phương thức thanh toán", validity >= CHECK_LIMITS["payment_validity"], "MEDIUM", round(validity, 4), f"≥ {CHECK_LIMITS['payment_validity']:.2%}", "Kiểm tra payment_method thuộc tập giá trị chấp nhận."),
+        CheckResult("distribution_drift", "Trôi phân phối (JS divergence)", js <= CHECK_LIMITS["distribution_js"], "MEDIUM", round(js, 4), f"≤ {CHECK_LIMITS['distribution_js']:g}", "So sánh phân phối phương thức thanh toán với baseline khỏe mạnh."),
+        CheckResult("amount_drift", "Biến động giá trị đơn trung bình", (1/CHECK_LIMITS["amount_mean_ratio"]) <= mean_ratio <= CHECK_LIMITS["amount_mean_ratio"], "MEDIUM", round(mean_ratio, 4), f"{1/CHECK_LIMITS['amount_mean_ratio']:.3f}–{CHECK_LIMITS['amount_mean_ratio']:g} × baseline", "Tỷ số giá trị đơn hàng trung bình so với baseline."),
+        CheckResult("volume", "Bất thường số bản ghi", CHECK_LIMITS["volume_ratio_low"] <= vol_ratio <= CHECK_LIMITS["volume_ratio_high"], "MEDIUM", round(vol_ratio, 4), f"{CHECK_LIMITS['volume_ratio_low']:g}–{CHECK_LIMITS['volume_ratio_high']:g} × baseline", "Kiểm tra tăng hoặc giảm đột biến khối lượng dữ liệu."),
     ]
     metrics = {
         "row_count": n, "freshness_minutes": round(lag, 2),

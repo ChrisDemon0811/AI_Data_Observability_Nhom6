@@ -1,3 +1,26 @@
+x-pipeline-environment: &pipeline-environment
+  DATABASE_URL: postgresql+psycopg://observability:observability@postgres:5432/observability
+  LLM_MODE: ${LLM_MODE:-offline}
+  LLM_ALLOW_EXTERNAL: ${LLM_ALLOW_EXTERNAL:-false}
+  LLM_BASE_URL: ${LLM_BASE_URL:-}
+  LLM_MODEL: ${LLM_MODEL:-}
+  LLM_API_KEY: ${LLM_API_KEY:-}
+  LLM_TIMEOUT_SECONDS: ${LLM_TIMEOUT_SECONDS:-10}
+  DQ_FRESHNESS_MINUTES: ${DQ_FRESHNESS_MINUTES:-60}
+  DQ_COMPLETENESS: ${DQ_COMPLETENESS:-0.98}
+  DQ_UNIQUENESS: ${DQ_UNIQUENESS:-0.995}
+  DQ_SCHEMA_MATCH: ${DQ_SCHEMA_MATCH:-1}
+  DQ_PAYMENT_VALIDITY: ${DQ_PAYMENT_VALIDITY:-0.99}
+  DQ_DISTRIBUTION_JS: ${DQ_DISTRIBUTION_JS:-0.12}
+  DQ_AMOUNT_MEAN_RATIO: ${DQ_AMOUNT_MEAN_RATIO:-1.5}
+  DQ_VOLUME_RATIO_LOW: ${DQ_VOLUME_RATIO_LOW:-0.6}
+  DQ_VOLUME_RATIO_HIGH: ${DQ_VOLUME_RATIO_HIGH:-1.5}
+  ZSCORE_THRESHOLD: ${ZSCORE_THRESHOLD:-3}
+  ZSCORE_MIN_HISTORY: ${ZSCORE_MIN_HISTORY:-5}
+  KS_ALPHA: ${KS_ALPHA:-0.05}
+  KS_MIN_SAMPLES: ${KS_MIN_SAMPLES:-20}
+  KS_EFFECT_THRESHOLD: ${KS_EFFECT_THRESHOLD:-0.1}
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -15,8 +38,7 @@ services:
       - "127.0.0.1:5432:5432"
   api:
     build: .
-    environment:
-      DATABASE_URL: postgresql+psycopg://observability:observability@postgres:5432/observability
+    environment: *pipeline-environment
     command: sh -c "python -m observability.cli seed && python -m uvicorn observability.api:app --host 0.0.0.0 --port 8000"
     depends_on:
       postgres:
@@ -42,7 +64,7 @@ services:
   scheduler:
     build: .
     environment:
-      DATABASE_URL: postgresql+psycopg://observability:observability@postgres:5432/observability
+      <<: *pipeline-environment
       SCHEDULER_INTERVAL_SECONDS: ${SCHEDULER_INTERVAL_SECONDS:-300}
     command: python -m observability.scheduler
     volumes:

@@ -6,6 +6,13 @@ from sqlalchemy.orm import sessionmaker
 from observability import database
 
 
+@pytest.fixture(autouse=True)
+def offline_by_default(monkeypatch):
+    """Tests never inherit permission to send data to a configured live provider."""
+    monkeypatch.setenv("LLM_MODE", "offline")
+    monkeypatch.setenv("LLM_ALLOW_EXTERNAL", "false")
+
+
 @pytest.fixture
 def isolated_db(tmp_path, monkeypatch):
     engine = create_engine(f"sqlite:///{tmp_path / 'task1.db'}",

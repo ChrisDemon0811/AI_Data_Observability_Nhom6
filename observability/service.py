@@ -9,15 +9,17 @@ from sqlalchemy import delete, desc, func, select
 
 from .anomaly import ml_score
 from .database import (
-    Alert, Base, Incident, IncidentEvent, PipelineRun, QualityCheck, RawOrder, RawCustomer, RawPayment,
+    Alert, Base, Incident, IncidentEvent, PipelineRun, QualityCheck, RawOrder, RawCustomer, RawPayment, PipelineEvent,
     check_to_dict, decode, engine, get_session, incident_to_dict,
     init_db, iso, now_utc, run_to_dict,
 )
 from .generator import SCENARIOS, generate_batch
 from .quality import baseline_from_runs, evaluate_quality
 from .rca import analyze_root_cause
-from .settings import DATA_DIR
+from .settings import CHECK_LIMITS, DATA_DIR
 from .sources import load_source_batch
+from .notifications import create_mock_notifications
+from .statistics import statistics_for_run
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +63,13 @@ def run_pipeline(scenario="normal", seed=None, export_csv=True):
     logger.info("Pipeline finish started_at=%s finished_at=%s run_id=%s status=%s rows=%s duration_ms=%s",
                 result["started_at"], result["finished_at"], result["id"], result["status"],
                 result["row_count"], result["duration_ms"])
+    if result["incident_id"] is not None:
+        try:
+            analyze_incident_rca(result["incident_id"])
+        except Exception as exc:
+            # The core run is committed. Keep rule RCA usable on enrichment errors.
+            logger.warning("RCA enrichment failed run_id=%s incident_id=%s committed=True error_type=%s",
+                           result["id"], result["incident_id"], type(exc).__name__)
     return result
 
 
@@ -76,6 +85,7 @@ def _run_pipeline(scenario, seed, export_csv, execution):
         batch = generate_batch(scenario, seed=seed if seed is not None else 1500 + run_number * 97)
         execution["rows"] = len(batch.frame)
         checks, metrics, quality_score = evaluate_quality(batch, baseline_from_runs(training))
+        metrics["quality_thresholds"] = dict(CHECK_LIMITS)
         is_outlier, ml_value, ml_info = ml_score(metrics, training)
         # The actual check thresholds, not the scenario name, determine incidents.
         failed = [c for c in checks if not c.passed]
@@ -96,7 +106,17 @@ def _run_pipeline(scenario, seed, export_csv, execution):
         session.add(record)
         session.flush()
         execution["run_id"] = record.id
+        session.add(PipelineEvent(run_id=record.id, timestamp=began, event_type="STARTED",
+                                  message="Pipeline execution started"))
         load_source_batch(session, record.id, batch)
+        session.flush()
+        statistics = statistics_for_run(session, record, training)
+        metrics["statistics"] = statistics
+        if statistics["zscore"]["anomalous"]:
+            status = record.status = "FAILED"
+        record.metrics_json = json.dumps({**metrics, "ml": ml_info}, ensure_ascii=False, allow_nan=False)
+        session.add(PipelineEvent(run_id=record.id, timestamp=now_utc(), event_type="SNAPSHOT_SAVED",
+                                  message=f"Saved synthetic source snapshot: {len(batch.frame)} orders"))
         for c in checks:
             session.add(QualityCheck(run_id=record.id, **c.as_dict()))
         incident_id = None
@@ -106,6 +126,7 @@ def _run_pipeline(scenario, seed, export_csv, execution):
             minutes = 30 if critical else (120 if severity.startswith("P2") else 480)
             owner = "Data Engineering" if any(x.code in {"freshness", "schema", "uniqueness", "completeness"} for x in failed) else "Data Analytics"
             reason = analyze_root_cause(checks, batch.upstream, metrics, ml_info)
+            reason["analysis_source"] = "RULE_BASED_FALLBACK"
             title = reason["conclusion"]
             incident = Incident(
                 run_id=record.id, title=title, severity=severity, status="OPEN",
@@ -117,7 +138,7 @@ def _run_pipeline(scenario, seed, export_csv, execution):
             session.flush()
             incident_id = incident.id
             for event_type, message in [
-                ("PIPELINE_FAILED", f"Run #{record.id} phát hiện {len(failed)} rule lỗi và ML anomaly={is_outlier}."),
+                ("PIPELINE_FAILED", f"Run #{record.id} phát hiện {len(failed)} rule lỗi, ML anomaly={is_outlier}, Z-score anomaly={statistics['zscore']['anomalous']}."),
                 ("ALERT_TRIGGERED", f"Cảnh báo {severity} gửi đến dashboard, chủ sở hữu {owner}."),
                 ("AI_RCA", f"Phân tích bằng chứng: {title}. Cần con người kiểm chứng."),
             ]:
@@ -127,11 +148,14 @@ def _run_pipeline(scenario, seed, export_csv, execution):
                 message=f"Incident #{incident.id}: {title}; run #{record.id}",
                 channel="dashboard", delivery_status="DEMO_ONLY",
             ))
+            create_mock_notifications(session, incident, record, checks)
         session.flush()
         record.finished_at = now_utc()
         record.duration_ms = max(1, round((time.perf_counter() - start) * 1000))
+        session.add(PipelineEvent(run_id=record.id, timestamp=record.finished_at, event_type="FINISHED",
+                                  message=f"status={status} rows={record.row_count} duration_ms={record.duration_ms}"))
         result = run_to_dict(record)
-        result["checks"] = [c.as_dict() for c in checks]
+        result["checks"] = [{**c.as_dict(), "run_id": record.id, "checked_at": iso(record.finished_at)} for c in checks]
         result["incident_id"] = incident_id
     execution["committed"] = True
     if export_csv:
@@ -144,7 +168,7 @@ def seed_demo(reset=False):
     init_db()
     with get_session() as session:
         if reset:
-            for model in [Alert, IncidentEvent, QualityCheck, Incident, RawPayment, RawCustomer, RawOrder, PipelineRun]:
+            for model in [Alert, IncidentEvent, QualityCheck, Incident, RawPayment, RawCustomer, RawOrder, PipelineEvent, PipelineRun]:
                 session.execute(delete(model))
         elif (session.scalar(select(func.count()).select_from(PipelineRun)) or 0) > 0:
             return {"message": "Có dữ liệu demo rồi. Dùng reset nếu muốn khởi tạo lại.", "created_runs": 0}
@@ -166,9 +190,36 @@ def get_run(run_id):
         if not rec:
             return None
         result = run_to_dict(rec)
-        result["checks"] = [check_to_dict(x) for x in s.execute(select(QualityCheck).where(QualityCheck.run_id == run_id)).scalars()]
+        result["checks"] = [check_to_dict(x, rec.finished_at) for x in s.execute(select(QualityCheck).where(QualityCheck.run_id == run_id)).scalars()]
+        result["execution_logs"] = [{"timestamp": iso(x.timestamp), "type": x.event_type, "message": x.message}
+                                    for x in s.scalars(select(PipelineEvent).where(PipelineEvent.run_id == run_id)
+                                                       .order_by(PipelineEvent.id))]
         result["preview"] = decode(rec.preview_json, [])
         return result
+
+
+def analyze_incident_rca(incident_id):
+    """Enrich after the core commit; external I/O never holds its write transaction."""
+    from .llm_rca import analyze_incident, build_context
+
+    incident = get_incident(incident_id)
+    if incident is None:
+        return None
+    run = get_run(incident["run_id"])
+    reason = incident["root_cause"]
+    context = build_context(run=run, checks=run["checks"], incident=incident,
+                            events=incident["events"], lineage=LINEAGE)
+    analysis = analyze_incident(context, reason)
+    with get_session() as session:
+        item = session.get(Incident, incident_id)
+        current = decode(item.root_cause_json, {})
+        current.update(analysis_source=analysis["analysis_source"], ai_analysis=analysis,
+                       analysis_context=context)
+        item.root_cause_json = json.dumps(current, ensure_ascii=False, allow_nan=False)
+        session.add(IncidentEvent(incident_id=incident_id, timestamp=now_utc(), event_type="RCA_ANALYZED",
+                                  message=f"Analysis source: {analysis['analysis_source']}; human review required",
+                                  actor="system"))
+    return get_incident(incident_id)
 
 
 def list_incidents(limit=100):
@@ -214,6 +265,18 @@ def list_alerts(limit=100):
     with get_session() as s:
         rows = s.execute(select(Alert).order_by(desc(Alert.id)).limit(limit)).scalars().all()
         return [{"id": x.id, "incident_id": x.incident_id, "created_at": iso(x.created_at), "severity": x.severity, "message": x.message, "channel": x.channel, "delivery_status": x.delivery_status} for x in rows]
+
+
+def record_demo_remediation(incident_id):
+    with get_session() as session:
+        incident = session.get(Incident, incident_id)
+        if incident is None:
+            return None
+        if incident.status != "RESOLVED":
+            session.add(IncidentEvent(incident_id=incident_id, timestamp=now_utc(),
+                                      event_type="DEMO_REMEDIATION", actor="demo-user",
+                                      message="DEMO: nhân viên ghi nhận đã thực hiện checklist mô phỏng; chưa chứng minh dữ liệu đã được sửa."))
+    return get_incident(incident_id)
 
 
 def summary():

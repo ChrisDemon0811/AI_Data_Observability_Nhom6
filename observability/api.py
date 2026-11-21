@@ -8,9 +8,12 @@ from .generator import SCENARIOS
 from .service import (
     LINEAGE, get_incident, get_run, list_alerts, list_incidents,
     list_runs, run_pipeline, seed_demo, summary, trend, update_incident,
+    analyze_incident_rca,
+    record_demo_remediation,
 )
 from .database import init_db
 from .sources import SOURCE_MODELS, get_sources
+from .settings import CHECK_LIMITS, STATISTICAL_LIMITS
 
 
 @asynccontextmanager
@@ -33,6 +36,20 @@ class RunRequest(BaseModel):
 @app.get("/api/health")
 def health():
     return {"status": "ok", "service": "ai-data-observability"}
+
+
+@app.get("/api/config")
+def configuration():
+    return {"quality_thresholds": CHECK_LIMITS, "statistical_thresholds": STATISTICAL_LIMITS,
+            "upstream_telemetry": "DEMO", "notifications": "MOCK_ONLY"}
+
+
+@app.post("/api/incidents/{incident_id}/analyze")
+def analyze(incident_id: int):
+    result = analyze_incident_rca(incident_id)
+    if result is None:
+        raise HTTPException(404, "Không tìm thấy incident")
+    return result
 
 
 @app.get("/api/scenarios")
@@ -111,6 +128,14 @@ def acknowledge(incident_id: int):
 def resolve(incident_id: int):
     result = update_incident(incident_id, "resolve")
     if not result:
+        raise HTTPException(404, "Không tìm thấy incident")
+    return result
+
+
+@app.post("/api/incidents/{incident_id}/simulate-fix")
+def simulate_fix(incident_id: int):
+    result = record_demo_remediation(incident_id)
+    if result is None:
         raise HTTPException(404, "Không tìm thấy incident")
     return result
 

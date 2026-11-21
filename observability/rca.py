@@ -24,6 +24,13 @@ def analyze_root_cause(checks, upstream, metrics, ml_info):
         evidence.append(f"{check.title}: quan sát={check.observed}, yêu cầu {check.expected}")
 
     bad_sources = [(name, data) for name, data in upstream.items() if data.get("status") != "OK"]
+    statistical = metrics.get("statistics", {})
+    for name, result in statistical.get("zscore", {}).get("metrics", {}).items():
+        if result.get("anomalous"):
+            evidence.append(f"Z-score {name}: value={result['value']}, score={result['zscore']}, reason={result['reason']}")
+    ks = statistical.get("ks", {})
+    if ks.get("ks_distance") is not None:
+        evidence.append(f"KS amount so với run #{ks['previous_run_id']}: D={ks['ks_distance']:.4f}, p={ks['pvalue']:.4g}; chẩn đoán phân phối, chưa xác nhận nguyên nhân")
     for name, data in bad_sources:
         evidence.append(f"{name}: trạng thái={data['status']}, errors={data['error_count']}, rows={data['rows']}")
 
@@ -44,7 +51,8 @@ def analyze_root_cause(checks, upstream, metrics, ml_info):
     if "validity" in failures:
         hypotheses.append((0.74, "Giá trị thanh toán không hợp lệ", "Có NULL hoặc hạng mục không thuộc hợp đồng dữ liệu.", "raw_payments"))
     if not hypotheses:
-        hypotheses.append((0.61, "Bất thường thống kê chưa rõ nguyên nhân", "IsolationForest thấy mô hình dữ liệu khác baseline; cần xác minh thủ công.", "fact_orders"))
+        method = "Z-score" if statistical.get("zscore", {}).get("anomalous") else "IsolationForest"
+        hypotheses.append((0.61, "Bất thường thống kê chưa rõ nguyên nhân", f"{method} thấy mô hình dữ liệu khác baseline; cần xác minh thủ công.", "fact_orders"))
 
     hypotheses.sort(key=lambda x: x[0], reverse=True)
     top = hypotheses[0]
@@ -62,7 +70,9 @@ def analyze_root_cause(checks, upstream, metrics, ml_info):
     if "volume" in failures:
         checklist.append("So sánh row count theo từng bước nguồn → staging → mart.")
     if not checklist:
-        checklist = ["Kiểm tra các đặc trưng nổi bật trong báo cáo ML.", "Xác nhận với data owner trước khi thay đổi pipeline."]
+        diagnostic = ("Đối chiếu giá trị, trung bình, độ lệch chuẩn và số run HEALTHY trong báo cáo Z-score."
+                      if statistical.get("zscore", {}).get("anomalous") else "Kiểm tra các đặc trưng nổi bật trong báo cáo ML.")
+        checklist = [diagnostic, "Xác nhận với data owner trước khi thay đổi pipeline."]
     checklist += ["Ghi nhận giải pháp và người chịu trách nhiệm vào incident timeline.", "Chạy lại pipeline, chỉ đóng incident sau khi các kiểm tra đạt."]
     checklist = list(dict.fromkeys(checklist))
     return {

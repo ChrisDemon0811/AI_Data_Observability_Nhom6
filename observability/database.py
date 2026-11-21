@@ -50,6 +50,16 @@ class RawSnapshot:
     payload_json = Column(Text, nullable=False)
 
 
+class PipelineEvent(Base):
+    """Actual execution events persisted with their run, not reconstructed file logs."""
+    __tablename__ = "pipeline_events"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    run_id = Column(Integer, ForeignKey("pipeline_runs.id"), nullable=False, index=True)
+    timestamp = Column(DateTime, nullable=False)
+    event_type = Column(String(60), nullable=False)
+    message = Column(Text, nullable=False)
+
+
 class RawOrder(RawSnapshot, Base):
     __tablename__ = "raw_orders"
     order_id = Column(String(100), nullable=True)
@@ -160,12 +170,13 @@ def run_to_dict(item):
     }
 
 
-def check_to_dict(item):
+def check_to_dict(item, checked_at=None):
     return {
         "id": item.id, "run_id": item.run_id, "code": item.code,
         "title": item.title, "passed": bool(item.passed),
         "severity": item.severity, "observed": item.observed,
         "expected": item.expected, "details": item.details,
+        "checked_at": iso(checked_at),
     }
 
 
