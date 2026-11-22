@@ -291,6 +291,7 @@ def build_context(run, checks, incident, events, lineage):
                     for node, data in safe_upstream.items())
     return {
         "data_mode": "DEMO_SYNTHETIC", "upstream_telemetry_simulated": True,
+        "execution_log_source": "pipeline_events", "file_logs_included": False,
         "run": safe_run, "checks": safe_checks, "incident": safe_incident,
         "events": safe_events, "lineage": {"nodes": [{"id": n} for n in nodes], "edges": edges},
         "evidence": evidence,
@@ -300,7 +301,7 @@ def build_context(run, checks, incident, events, lineage):
 def _rule_reason(reason):
     return {key: deepcopy(value) for key, value in reason.items()
             if key not in {"ai_analysis", "analysis_context", "rule_based_reason",
-                           "analysis_source", "fallback_reason_code"}}
+                           "analysis_source", "fallback_reason_code", "analyzed_at"}}
 
 
 def _aliases(reason):

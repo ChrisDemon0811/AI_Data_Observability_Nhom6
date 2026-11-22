@@ -182,11 +182,13 @@ def check_to_dict(item, checked_at=None):
 
 def incident_to_dict(item):
     at = now_utc()
+    # Closing an incident must not erase a historical SLA breach.
+    evaluated_at = item.resolved_at if item.status == "RESOLVED" and item.resolved_at else at
     return {
         "id": item.id, "run_id": item.run_id, "title": item.title,
         "severity": item.severity, "status": item.status, "owner": item.owner,
         "created_at": iso(item.created_at), "sla_deadline": iso(item.sla_deadline),
         "resolved_at": iso(item.resolved_at),
-        "sla_breached": item.status != "RESOLVED" and at > item.sla_deadline,
+        "sla_breached": evaluated_at > item.sla_deadline,
         "root_cause": decode(item.root_cause_json, {}),
     }

@@ -35,6 +35,8 @@ def request_api(path, method="GET", payload=None, timeout=25):
         return rsp.json()
     except requests.RequestException as exc:
         raise RuntimeError(f"Không thể kết nối API {API}: {exc}") from exc
+    except ValueError as exc:
+        raise RuntimeError("API trả phản hồi JSON không hợp lệ.") from exc
 
 
 def datatable(df, key=None):
@@ -48,6 +50,81 @@ def percent(v):
 def title_note(title, note):
     st.subheader(title)
     st.caption(note)
+
+
+def render_rca_report(item):
+    """All incident-specific state is local; provider success and fallback share UI."""
+    incident_id = item["id"]
+    if st.button("Phân tích lại incident", key="reanalyze"):
+        try:
+            request_api(f"/api/incidents/{incident_id}/analyze", "POST", timeout=45)
+            updated = request_api(f"/api/incidents/{incident_id}")
+            if not isinstance(updated, dict) or updated.get("id") != incident_id or not isinstance(updated.get("root_cause"), dict):
+                raise RuntimeError("API trả thông tin incident không hợp lệ.")
+            item = updated
+        except RuntimeError as exc:
+            st.error(f"Phân tích lại chưa thành công: {exc}")
+            st.caption("Đang hiển thị kết quả đã lưu trước yêu cầu này; hãy làm mới để kiểm tra lại.")
+
+    rca = item["root_cause"]
+    ai = rca.get("ai_analysis") or rca
+    source = ai.get("analysis_source", "RULE_BASED_FALLBACK")
+    st.markdown("**Thông tin incident**")
+    st.write(f"Incident ID: INC-{incident_id:03d}")
+    st.write("Severity:", item["severity"])
+    st.write("Owner:", item["owner"])
+    st.write("Status:", item["status"])
+    st.info(f"Nguồn phân tích: {source}. " + (
+        "LLM đưa ra giả thuyết từ context tổng hợp đã lọc." if source == "LLM"
+        else "Đang dùng fallback bằng luật, không phải kết quả LLM."))
+    if ai.get("fallback_reason_code"):
+        st.caption("Lý do fallback: " + ai["fallback_reason_code"])
+    if rca.get("analyzed_at"):
+        st.caption("Thời điểm phân tích: " + rca["analyzed_at"])
+
+    st.markdown("**Tóm tắt phân tích hiện tại**")
+    st.write(ai.get("summary", ai.get("conclusion", "Chưa có tóm tắt.")))
+    st.markdown("**Upstream nghi ngờ**")
+    st.write(ai.get("suspected_upstream", [ai.get("affected_node", "Chưa có")]))
+    st.markdown("**Giả thuyết nguyên nhân**")
+    st.write(ai.get("possible_root_causes", [ai.get("explanation", "Chưa có")]))
+    with st.expander("Bằng chứng và checklist từ nguồn phân tích hiện tại", expanded=True):
+        st.markdown("**Bằng chứng**")
+        for fact in ai.get("evidence", []):
+            st.write("• " + fact)
+        st.markdown("**Recommended checklist**")
+        for step in ai.get("recommended_checklist", ai.get("checklist", [])):
+            st.write("☐ " + step)
+    st.warning("Human review required: cần con người xác minh. AI chỉ đề xuất giả thuyết, không xác nhận nguyên nhân chắc chắn.")
+
+    context = rca.get("analysis_context", {})
+    with st.expander("Context đã lưu: log thực thi, lineage, metrics tổng hợp"):
+        st.caption("Execution logs là sự kiện pipeline lưu trong DB, không phải nội dung file scheduler.log. Upstream telemetry là DEMO mô phỏng.")
+        if context:
+            st.markdown("**Data lineage**")
+            st.json(context.get("lineage", {}))
+            st.markdown("**Execution events — database**")
+            st.json(context.get("run", {}).get("execution_logs", []))
+            st.markdown("**ML / Z-score / KS / metrics**")
+            st.json(context.get("run", {}).get("metrics", {}))
+            st.markdown("**Context đã sử dụng**")
+            st.json(context)
+        else:
+            st.info("Incident cũ chưa có context đã lưu; có thể phân tích lại.")
+
+    with st.expander("Báo cáo RCA bằng luật để đối chiếu"):
+        st.markdown("### 🔎 " + rca.get("conclusion", "Chưa có báo cáo bằng luật"))
+        st.write(rca.get("explanation", ""))
+        st.write("Thành phần nghi vấn:", rca.get("affected_node", ""))
+        if rca.get("confidence") is not None:
+            st.metric("Mức ưu tiên giả thuyết bằng luật", f"{rca['confidence']*100:.0f}/100")
+        for fact in rca.get("evidence", []):
+            st.markdown("- " + fact)
+        if rca.get("alternatives"):
+            datatable(pd.DataFrame(rca["alternatives"]))
+        for n, step in enumerate(rca.get("checklist", []), start=1):
+            st.checkbox(step, key=f"check_{incident_id}_{n}")
+        st.caption(rca.get("confidence_note", ""))
 
 
 with st.sidebar:
@@ -326,48 +403,10 @@ def render_dashboard():
             st.info("Chưa có incident. Hãy tạo lỗi trước bằng các kịch bản bên trái.")
         else:
             incident_id = st.selectbox("Chọn incident để truy vết", [i["id"] for i in incidents], format_func=lambda x: f"INC-{x:03d} · {next(i['title'] for i in incidents if i['id']==x)}", key="inc_rca")
-            item = request_api(f"/api/incidents/{incident_id}")
-            rca = item["root_cause"]
-            ai = rca.get("ai_analysis", rca)
-            analysis_source = rca.get("analysis_source", "RULE_BASED_FALLBACK")
-            st.info(f"Nguồn phân tích: {analysis_source}. " + (
-            "Đang dùng fallback bằng luật, không phải kết quả LLM."
-                if analysis_source != "LLM" else "LLM đưa ra giả thuyết từ context tổng hợp đã lọc."))
-        if ai.get("fallback_reason_code"):
-            st.caption("Lý do fallback: " + ai["fallback_reason_code"])
-            if st.button("Phân tích lại incident", key="reanalyze"):
-                request_api(f"/api/incidents/{incident_id}/analyze", "POST", timeout=45)
-                st.rerun()
-            st.markdown("**Tóm tắt phân tích hiện tại**")
-            st.write(ai.get("summary", ai.get("conclusion", rca["conclusion"])))
-            st.write("**Upstream nghi ngờ:**", ai.get("suspected_upstream", [rca["affected_node"]]))
-            st.write("**Giả thuyết:**", ai.get("possible_root_causes", [ai.get("explanation", rca["explanation"])]))
-            with st.expander("Bằng chứng và checklist từ nguồn phân tích hiện tại", expanded=True):
-                for fact in ai.get("evidence", []):
-                    st.write("• " + fact)
-                for step in ai.get("recommended_checklist", ai.get("checklist", [])):
-                    st.write("☐ " + step)
-            with st.expander("Context đã lưu: log thực thi, lineage, metrics tổng hợp"):
-                st.json(rca.get("analysis_context", {"note": "Incident cũ chưa có context LLM; có thể phân tích lại."}))
-            st.caption("Phần bên dưới giữ báo cáo RCA bằng luật để đối chiếu với phân tích hiện tại.")
-            st.markdown("### 🔎 " + rca["conclusion"])
-            c1,c2,c3 = st.columns(3)
-            c1.metric("Mức ưu tiên giả thuyết", f"{rca['confidence']*100:.0f}/100")
-            c2.metric("Độ nghiêm trọng", item["severity"])
-            c3.metric("Thành phần nghi vấn", rca["affected_node"])
-            st.warning("AI đưa ra giả thuyết có giải thích, không phải kết luận chắc chắn. Người phụ trách cần xác minh bằng log và dữ liệu thực tế.")
-            st.markdown("**Giải thích**")
-            st.write(rca["explanation"])
-            st.markdown("**Bằng chứng đã sử dụng**")
-            for fact in rca["evidence"]:
-                st.markdown("- " + fact)
-            if rca["alternatives"]:
-                with st.expander("Các giả thuyết khác"):
-                    datatable(pd.DataFrame(rca["alternatives"]))
-            st.markdown("**Checklist đề xuất khắc phục**")
-            for n, step in enumerate(rca["checklist"], start=1):
-                st.checkbox(step, key=f"check_{incident_id}_{n}")
-            st.caption(rca["confidence_note"])
+            try:
+                render_rca_report(request_api(f"/api/incidents/{incident_id}"))
+            except RuntimeError as error:
+                st.error(str(error))
         st.divider()
         st.markdown("**Kế hoạch triển khai trên hệ thống thật**")
         st.code("1. Thay generate_batch() bằng connector đọc PostgreSQL/API/Kafka.\n2. Chuẩn hóa data contracts và baseline theo từng dataset.\n3. Deploy backend + dashboard + scheduler qua Docker Compose.\n4. Bổ sung RBAC, quản lý secrets, giám sát và kênh gửi cảnh báo thực.\n5. Đánh giá AI RCA trên incident được chuyên gia gán nhãn.", language="text")

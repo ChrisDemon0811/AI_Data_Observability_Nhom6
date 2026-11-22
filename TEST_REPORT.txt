@@ -1,20 +1,49 @@
-NHOM 6 - AI DATA OBSERVABILITY - KIEM THU
+NHÓM 6 — AI DATA OBSERVABILITY — BÁO CÁO KIỂM THỬ TASK 5
+Ngày: 22/11/2026 (Asia/Saigon)
+Nhánh main; HEAD ban đầu: 3f336ae (đã đối chiếu remote main).
 
-Ma nguon: Python 3.13.5 (kiem tra trong moi truong tao artifact)
-Lenh test: python -m pytest -q tests/test_system.py
-Ket qua: 11 passed (kiem tra ngay 10/10/2026)
+Môi trường: Windows, Python .venv 3.13.0rc2, pytest 9.2.0,
+Streamlit 1.65.0, FastAPI 0.143.0.
 
-Pham vi da kiem tra:
-- 8 kịch bản dữ liệu: bình thường + 7 lỗi
-- Seed dữ liệu 16 lần chạy, tạo incident
-- RCA dựa vào telemetry upstream và check failures
-- Transition ACKNOWLEDGED -> RESOLVED, incident timeline
-- FastAPI qua TestClient /api/health, /api/seed, /api/summary, /api/runs, /api/incidents, /api/lineage
-- Toan bo .py da qua compileall (kiem tra cu phap)
+Lệnh đã chạy và kết quả:
+1. .venv/Scripts/python.exe -m compileall -q observability tests dashboard.py
+   Thành công, không lỗi cú pháp.
+2. .venv/Scripts/python.exe -m pytest -q
+   181 passed, 32 warnings in 55.17s
+3. .venv/Scripts/python.exe -m pip check
+   No broken requirements found.
+4. git diff --check và bash -n run_demo.sh: thành công.
+5. Đọc/kiểm tra tĩnh YAML Compose: PASS, bốn service, môi trường LLM,
+   mặc định offline, PostgreSQL volume và dependency healthcheck đúng cấu hình.
 
-Han che trong moi truong tao artifact:
-- Khong co package Streamlit, khong co mang de cai moi. Do do KHONG the mo dashboard do hoa thuc te o moi truong nay.
-- Khi nguoi dung chay run_demo.bat tren PC co Internet, pip se cai Streamlit va cac thu vien tu requirements.txt.
-- Khong chay thu Docker Compose/PostgreSQL o moi truong tao artifact, nhung YAML va Dockerfile da duoc cung cap.
+Phạm vi:
+- Toàn bộ 162 test trước đó của Task 1–5 vẫn qua.
+- 19 test mới kiểm tra Streamlit AppTest qua FastAPI TestClient và DB tạm:
+  chưa có incident; incident biến mất không giữ dữ liệu UI cũ;
+  offline không key; LLM thành công có đủ nội dung và nút phân tích lại;
+  nhấn phân tích lại ghi DB rồi GET lại kết quả mới;
+  timeout, HTTP 401/429/500, JSON sai, thiếu trường, evidence/node sai -> fallback;
+  API HTTP/JSON lỗi và POST đã commit nhưng GET lỗi -> thông báo phù hợp;
+  SLA đóng trước, đúng hạn và sau hạn được đánh giá theo resolved_at.
+- Context phân biệt pipeline_events trong DB với file log chưa được đọc,
+  telemetry upstream là DEMO; không gửi transaction rows hoặc key.
+- Phân tích lại nhiều lần không lồng JSON vô hạn; giữ báo cáo bằng luật.
+- Kiểm tra scheduler thật interval 15 giây nằm trong toàn suite.
 
-API va business logic da duoc kiem thu tu dong, nhung production use can auth, monitoring, real ingestion va evaluation.
+Cảnh báo:
+- 1 Starlette TestClient/httpx deprecation.
+- 31 Streamlit/pandas/NumPy timedelta deprecation từ các lần render.
+Không có test thất bại, không skip test lỗi, không tắt cảnh báo.
+
+Bảo toàn dữ liệu:
+- Test dùng DB/CSV/log/lock tạm; không reset hoặc ghi database nhóm.
+- SHA-256 trước và sau:
+  DF341657767D0588881BDAAEBA6662501FDEDD7882BDF5FD783352061CED83F3
+- Không sửa .env hoặc đọc/in API key trong báo cáo.
+
+Giới hạn kiểm chứng:
+- LLM thành công và lỗi được kiểm thử bằng HTTP mock; chưa gọi Gemini/provider thật.
+- Không có Docker CLI/PostgreSQL server: chưa chạy docker compose config hoặc
+  docker compose up --build, chưa xác minh lưu dữ liệu PostgreSQL runtime.
+- Đã render Streamlit bằng AppTest; chưa đánh giá trực quan qua trình duyệt.
+- Không tuyên bố deploy production, gửi notification thật hay AI xác nhận nguyên nhân.

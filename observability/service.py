@@ -210,13 +210,14 @@ def analyze_incident_rca(incident_id):
     context = build_context(run=run, checks=run["checks"], incident=incident,
                             events=incident["events"], lineage=LINEAGE)
     analysis = analyze_incident(context, reason)
+    analyzed_at = now_utc()
     with get_session() as session:
         item = session.get(Incident, incident_id)
         current = decode(item.root_cause_json, {})
         current.update(analysis_source=analysis["analysis_source"], ai_analysis=analysis,
-                       analysis_context=context)
+                       analysis_context=context, analyzed_at=iso(analyzed_at))
         item.root_cause_json = json.dumps(current, ensure_ascii=False, allow_nan=False)
-        session.add(IncidentEvent(incident_id=incident_id, timestamp=now_utc(), event_type="RCA_ANALYZED",
+        session.add(IncidentEvent(incident_id=incident_id, timestamp=analyzed_at, event_type="RCA_ANALYZED",
                                   message=f"Analysis source: {analysis['analysis_source']}; human review required",
                                   actor="system"))
     return get_incident(incident_id)

@@ -295,7 +295,7 @@ Biểu đồ thể hiện luồng dữ liệu logic. DQ/ML được tính trên 
 | 4 | `notifications.py` (mới), `service.py`, `database.py`, `api.py`, `dashboard.py` | Email/Slack MOCK, alerts, timeline, owner, SLA |
 | 5 | `llm_rca.py` (mới), `rca.py`, `service.py`, `api.py`, `dashboard.py`, `compose.yaml`, `Dockerfile` | HTTP OpenAI-compatible, Pydantic v2, deterministic fallback, Docker |
 
-Tên module trong bảng thuộc `observability/`, trừ dashboard và các file Docker ở thư mục gốc. Các test mới: `test_statistics.py`, `test_notifications.py`, `test_llm_rca.py`, `test_full_workflow.py`, `test_live_schedule.py`.
+Tên module trong bảng thuộc `observability/`, trừ dashboard và các file Docker ở thư mục gốc. Các test: `test_statistics.py`, `test_notifications.py`, `test_llm_rca.py`, `test_full_workflow.py`, `test_live_schedule.py`, `test_task5_dashboard.py`.
 
 Schema nâng cấp thêm `pipeline_events` để lưu **sự kiện thực thi có thật**: STARTED, SNAPSHOT_SAVED, FINISHED kèm run ID/thời điểm. `/api/runs/{id}` trả `execution_logs`. Đây là sự kiện cấu trúc trong DB; không giả nhận đã đọc file log của các run lịch sử. Với run cũ chưa có sự kiện, danh sách rỗng. Không ALTER/xóa bảng cũ, không backfill snapshot/log giả.
 
@@ -353,6 +353,10 @@ Output JSON được kiểm tra bằng Pydantic: kết luận/tóm tắt, giả 
 
 Thành công ghi `analysis_source=LLM`. Thiếu cấu hình, chưa cho phép gửi, timeout, lỗi HTTP hoặc JSON/grounding không hợp lệ sẽ dùng `RULE_BASED_FALLBACK` và `fallback_reason_code` cố định, không ghi key/raw lỗi provider vào log. Kết quả và context được lưu dưới `incident.root_cause.ai_analysis/analysis_context`, giữ báo cáo bằng luật cũ để đối chiếu.
 
+Tab 05 hiển thị summary, upstream, giả thuyết, bằng chứng, checklist và nút phân tích lại ở cả hai chế độ. Chỉ dòng lý do fallback phụ thuộc `fallback_reason_code`; khi chưa có incident chỉ hiện hướng dẫn tạo sự cố. Nút phân tích lại kiểm tra POST, đọc lại incident đã lưu qua GET rồi cập nhật kết quả. Nếu HTTP/JSON hoặc bước đọc lại lỗi, giao diện báo lỗi và ghi rõ đang hiển thị kết quả cũ. `analyzed_at` là thời điểm phân tích được lưu thật, không suy ra từ thời điểm mở trang. Báo cáo bằng luật nằm trong expander riêng.
+
+Context đánh dấu `execution_log_source=pipeline_events`, `file_logs_included=false`: sự kiện DB có thật, chưa đọc nội dung `scheduler.log`. Telemetry upstream được đánh dấu DEMO. Incident RESOLVED vẫn giữ `sla_breached=true` nếu `resolved_at` sau deadline; đóng trước/đúng hạn không bị đánh dấu trễ.
+
 Có thể nhấn **Phân tích lại incident** ở tab 05 hoặc gọi API:
 
 ```powershell
@@ -376,9 +380,9 @@ Dừng bằng Ctrl+C trong ba terminal, chờ worker hoàn tất job; Docker dù
 
 Các kết quả mới nhất được ghi tại [TASK_CHECKLIST.md](TASK_CHECKLIST.md), kèm tên test làm bằng chứng. Test dùng DB/CSV/log/lock tạm, không reset database nhóm. Có test worker thật hai lượt **15 giây**, test Streamlit `AppTest` render đủ 5 tab qua API FastAPI thật trong tiến trình test, và kiểm tra toàn bộ 8 scenario.
 
-Kết quả thực tế ngày 21/11/2026: **162 passed, 2 warnings in 38.83s**. Sau bổ sung nhãn DEMO trong context LLM, chạy lại 79 test LLM/workflow liên quan: **79 passed, 2 warnings in 7.11s**. Hai warning deprecation thuộc Starlette/httpx và Streamlit/NumPy, không có test thất bại. `compileall`, `pip check`, `git diff --check` đều qua. Smoke HTTP Uvicorn thật qua health, tạo run lỗi, snapshot, mock notification, fallback RCA và Swagger; server dùng DB tạm rồi dừng.
+Kết quả mới nhất ngày 22/11/2026: **181 passed, 32 warnings in 55.17s**. Gồm 162 test có sẵn và 19 test mới về render RCA/reanalysis/SLA. AppTest kiểm tra cả LLM thành công qua mock provider và trường hợp chưa có incident, chuyển từ LLM sang fallback, API lỗi và cập nhật dữ liệu sau phân tích lại. 32 warning deprecation thuộc hai nhóm Starlette/httpx và Streamlit/NumPy, không có test thất bại. `compileall`, `pip check`, `git diff --check` đều qua; API Task 1–4 vẫn qua TestClient, worker thật 15 giây vẫn qua test.
 
-Checksum DB demo trước/sau giữ nguyên (`D1894A6B6D562A0813C5601F82669E20FD8C5359884E0D608A0C9892910CF27E`). Code chỉ bổ sung bảng `pipeline_events` khi khởi động; không sửa lại lịch sử cũ.
+Checksum DB demo trước/sau phiên sửa Task 5 giữ nguyên (`DF341657767D0588881BDAAEBA6662501FDEDD7882BDF5FD783352061CED83F3`). Không reset hoặc ghi DB nhóm trong kiểm thử; không sửa `.env` hay sử dụng key để gọi provider thật.
 
 Chạy kiểm thử:
 

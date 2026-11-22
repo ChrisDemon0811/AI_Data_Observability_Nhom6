@@ -1,6 +1,6 @@
 # Checklist kiểm chứng 5 task — Nhóm 6, AI Data Observability
 
-Đối chiếu yêu cầu với code và test. `PASS` là phần đã được kiểm thử trong môi trường local/DB tạm; `MOCK PASS` là nhánh giả lập được đánh dấu rõ; `TĨNH` không có nghĩa đã deploy thật. Workspace đang trỏ tới remote `ChrisDemon0811/AI_Data_Observability_Nhom6`; HEAD local và remote cùng commit `0fcade0` khi bắt đầu. Các thay đổi bàn giao nằm trong workspace, chưa push lên GitHub.
+Đối chiếu yêu cầu với code và test. `PASS` là phần đã được kiểm thử trong môi trường local/DB tạm; `MOCK PASS` là nhánh giả lập được đánh dấu rõ; `TĨNH` không có nghĩa đã deploy thật. Ngày 22/11/2026, nhánh main local và remote cùng commit `3f336ae` trước khi sửa Task 5. Thay đổi mới nằm trong workspace, chưa push lên GitHub.
 
 | Task | Yêu cầu | File triển khai | Công nghệ | Trạng thái | Cách kiểm chứng |
 |---|---|---|---|---|---|
@@ -45,7 +45,11 @@
 | 5 | Timeout/lỗi provider/JSON → fallback | `llm_rca.py` | requests timeout, error codes | MOCK PASS | `test_request_errors_are_safe_and_never_retried`; `test_http_errors_never_expose_body_or_retry`; test tích hợp timeout |
 | 5 | JSON Pydantic, node/evidence hợp lệ, cần người xác minh | `llm_rca.py::LLMAnalysis` | Pydantic strict, Literal True, grounding | PASS | `test_invalid_or_ungrounded_output_falls_back`; `test_malformed_chat_envelopes` |
 | 5 | Lưu kết quả và context, phân tích lại không phình JSON | `service.py`, `llm_rca.py` | root_cause_json mở rộng | PASS | `test_new_endpoints_and_reanalysis_are_bounded`; `test_reanalysis_strips_previous_nested_analysis_and_keeps_size_bounded` |
-| 5 | Tóm tắt/upstream/bằng chứng/giả thuyết/checklist trên tab 05 | `dashboard.py` | Streamlit | PASS render fallback | `test_dashboard_five_tabs_render_against_real_api`; lưu nhánh LLM bằng test tích hợp mock |
+| 5 | Tóm tắt/upstream/bằng chứng/giả thuyết/checklist trên tab 05 | `dashboard.py` | Streamlit AppTest | PASS LLM mock và fallback | `test_task5_dashboard.py::test_llm_success_renders_without_fallback_reason`; `test_offline_without_key_shows_complete_report` |
+| 5 | Chưa có incident và không giữ dữ liệu incident cũ | `dashboard.py` | Render có phạm vi riêng | PASS | `test_no_incident_and_no_previous_incident_state`; `test_incident_disappears_without_reusing_previous_ui` |
+| 5 | Phân tích lại: POST thành công, GET DB mới và hiển thị đúng nguồn | `dashboard.py`, `service.py` | Lưu analyzed_at, đọc lại dữ liệu | PASS | `test_click_reanalyze_reads_latest_committed_result` |
+| 5 | Provider lỗi hiển thị fallback; API lỗi không giả thành công | `dashboard.py`, `llm_rca.py` | AppTest, mock lỗi | PASS | `test_provider_failure_reanalyzes_to_visible_fallback`; `test_api_failure_has_error_and_preserves_prior_result`; `test_post_commits_but_refresh_fails_does_not_claim_success` |
+| 4 | Incident đóng trễ vẫn ghi nhận vi phạm SLA | `database.py` | So sánh resolved_at với deadline | PASS | `test_task5_dashboard.py::test_resolved_sla_uses_resolution_time` — trước/đúng/sau hạn |
 | 5 | Dockerfile và Compose PostgreSQL/API/Streamlit/scheduler | `Dockerfile`, `compose.yaml` | Docker Compose, volume, healthcheck | TĨNH; chưa deploy thật | Kiểm tra YAML, bốn service, điều kiện API healthy; môi trường không có Docker |
 
 ## Cách chạy kiểm chứng
@@ -59,26 +63,26 @@
 
 Tất cả test dùng DB tạm. Các test kiểm tra reset chủ động chỉ thao tác DB tạm, không gọi reset database nhóm. Worker smoke test chuyển cả database, CSV, lock và log sang thư mục tạm. Test live scheduler chờ khoảng 15 giây; các test scheduler còn lại dùng đồng hồ giả hoặc chu kỳ 1 giây.
 
-## Kết quả phiên triển khai ngày 21/11/2026
+## Kết quả mới nhất — sửa Task 5 ngày 22/11/2026
 
 Kết quả chạy thật:
 
 ```text
 .venv/Scripts/python.exe -m pytest -q
-162 passed, 2 warnings in 38.83s
+181 passed, 32 warnings in 55.17s
 ```
 
-Bao gồm 27 test cũ, 44 test thống kê, 65 test LLM, 11 test notification, 14 test workflow và 1 test scheduler 15 giây thật (tính các trường hợp parametrized). Sau khi bổ sung nhãn DEMO trong context gửi LLM, đã chạy lại phạm vi bị ảnh hưởng: `pytest tests/test_llm_rca.py tests/test_full_workflow.py -q` → **79 passed, 2 warnings in 7.11s**.
+Bao gồm 162 test có sẵn (27 Task 1/system, 44 thống kê, 65 LLM, 11 notification, 14 workflow và 1 scheduler thật 15 giây) cùng 19 test AppTest/SLA mới. Không sửa assertion cũ hoặc bỏ qua test lỗi.
 
-Hai cảnh báo là Starlette TestClient/httpx deprecation và Streamlit/pandas/NumPy timedelta deprecation; không có test thất bại. Không đổi HTTP client/thư viện hiển thị ngoài phạm vi để che cảnh báo.
+32 cảnh báo gồm 1 Starlette TestClient/httpx deprecation và 31 Streamlit/pandas/NumPy timedelta deprecation; không có test thất bại. Không ẩn cảnh báo để làm đẹp kết quả.
 
-- Cài requirements-test: thành công, scipy/Pydantic đã có trong `.venv` và được khai báo dependency trực tiếp.
+- Dependencies đã có trong `.venv`: Python 3.13.0rc2, pytest 9.2.0, Streamlit 1.65.0, FastAPI 0.143.0.
 - `compileall`: thành công; `pip check`: `No broken requirements found`; `git diff --check`: thành công.
 - `bash -n run_demo.sh`: thành công.
-- Smoke HTTP Uvicorn thật: startup, health, POST run upstream_failure, snapshot 400 orders, ba channel alert, RCA fallback và `/docs` đều thành công trên DB tạm; server đã dừng sau test.
+- AppTest + FastAPI TestClient: Task 5 được render qua API/DB thật trong tiến trình test, chỉ provider bên ngoài là mock; API Task 1–4 và worker 15 giây vẫn qua toàn suite.
 - Compose YAML: kiểm tra tĩnh bốn service, config dùng chung và điều kiện healthcheck thành công. Không có Docker để xác minh runtime.
 
-SHA-256 database demo trước và sau kiểm thử cùng là `D1894A6B6D562A0813C5601F82669E20FD8C5359884E0D608A0C9892910CF27E`. DB nhóm không bị reset hoặc ghi thay đổi trong phiên; bảng mới được thêm khi người dùng khởi động hệ thống. Mọi kết quả trên lấy từ lần chạy thật, không tạo log/ảnh demo thành công giả.
+SHA-256 database demo trước và sau phiên sửa Task 5 cùng là `DF341657767D0588881BDAAEBA6662501FDEDD7882BDF5FD783352061CED83F3`. Không reset/ghi DB nhóm hoặc sửa `.env`; không gọi provider bằng key người dùng. Context ghi rõ sự kiện DB (`pipeline_events`), không giả là đã đọc file log, và upstream telemetry là DEMO.
 
 ## Những phần chưa xác minh
 
