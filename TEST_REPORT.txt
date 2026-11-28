@@ -1,6 +1,13 @@
-NHÓM 6 — AI DATA OBSERVABILITY — BÁO CÁO KIỂM THỬ TASK 5
-Ngày: 22/11/2026 (Asia/Saigon)
-Nhánh main; HEAD ban đầu: 3f336ae (đã đối chiếu remote main).
+NHÓM 6 — AI DATA OBSERVABILITY — BÁO CÁO KIỂM THỬ
+Ngày: 27/11/2026 (Asia/Saigon), cập nhật sửa refresh dashboard.
+
+Cập nhật tiếp: sửa hiển thị thời gian UTC -> giờ Việt Nam UTC+7.
+Lệnh: .venv/Scripts/python.exe -m pytest tests/test_display_time.py tests/test_task5_dashboard.py tests/test_dashboard_refresh.py -q
+Kết quả: 31 passed, 2 warnings in 17.38s.
+Kiểm tra đổi UTC/offset/ngày, thời gian thiếu/không hợp lệ và AppTest lịch sử/DQ/SLA/RCA.
+API/database giữ nguyên UTC; compileall và diff --check qua.
+Toàn suite 183 test bên dưới là kết quả trước thay đổi hiển thị thời gian,
+chưa chạy lại toàn suite sau thay đổi này.
 
 Môi trường: Windows, Python .venv 3.13.0rc2, pytest 9.2.0,
 Streamlit 1.65.0, FastAPI 0.143.0.
@@ -9,7 +16,7 @@ Lệnh đã chạy và kết quả:
 1. .venv/Scripts/python.exe -m compileall -q observability tests dashboard.py
    Thành công, không lỗi cú pháp.
 2. .venv/Scripts/python.exe -m pytest -q
-   181 passed, 32 warnings in 55.17s
+   183 passed, 2 warnings in 49.42s
 3. .venv/Scripts/python.exe -m pip check
    No broken requirements found.
 4. git diff --check và bash -n run_demo.sh: thành công.
@@ -17,6 +24,10 @@ Lệnh đã chạy và kết quả:
    mặc định offline, PostgreSQL volume và dependency healthcheck đúng cấu hình.
 
 Phạm vi:
+- Mặc định tắt tự làm mới; scheduler vẫn chạy độc lập.
+- Polling tự động chỉ gọi /api/dashboard/revision, dữ liệu không đổi không tải
+  lại dashboard. Timeout polling không crash, run mới cập nhật dữ liệu.
+- Revision theo dõi run, incident events, alerts và trạng thái SLA.
 - Toàn bộ 162 test trước đó của Task 1–5 vẫn qua.
 - 19 test mới kiểm tra Streamlit AppTest qua FastAPI TestClient và DB tạm:
   chưa có incident; incident biến mất không giữ dữ liệu UI cũ;
@@ -32,14 +43,16 @@ Phạm vi:
 
 Cảnh báo:
 - 1 Starlette TestClient/httpx deprecation.
-- 31 Streamlit/pandas/NumPy timedelta deprecation từ các lần render.
+- 1 Streamlit/pandas/NumPy timedelta deprecation từ polling fragment.
 Không có test thất bại, không skip test lỗi, không tắt cảnh báo.
 
 Bảo toàn dữ liệu:
 - Test dùng DB/CSV/log/lock tạm; không reset hoặc ghi database nhóm.
-- SHA-256 trước và sau:
+- SHA-256 trước và sau phiên sửa Task 5 ngày 22/11/2026 (kết quả lịch sử):
   DF341657767D0588881BDAAEBA6662501FDEDD7882BDF5FD783352061CED83F3
 - Không sửa .env hoặc đọc/in API key trong báo cáo.
+- Phiên 27/11: không ghi/reset DB nhóm. DB đang được tiến trình khác sử dụng,
+  không đọc được bằng Get-FileHash nên không công bố checksum mới.
 
 Giới hạn kiểm chứng:
 - LLM thành công và lỗi được kiểm thử bằng HTTP mock; chưa gọi Gemini/provider thật.

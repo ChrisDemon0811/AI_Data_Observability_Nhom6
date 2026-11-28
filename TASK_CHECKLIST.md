@@ -16,7 +16,7 @@
 | 1 | Sự kiện thực thi DB cho context RCA | `database.py::PipelineEvent`, `service.py` | STARTED/SNAPSHOT_SAVED/FINISHED | PASS | `test_full_workflow.py::test_all_scenarios_persist_monitoring_context` |
 | 1 | Lịch sử còn sau mở lại; DB cũ năm bảng dùng được | `database.py`, `service.py` | create_all thêm bảng | PASS | `test_statistics_recovery_and_reopen_history`; `test_legacy_exact_five_table_upgrade_preserves_history` |
 | 1 | Scheduler 15 giây thật, API đọc được hai run | `scheduler.py`, `api.py` | Worker process thật | PASS | `test_live_schedule.py::test_real_fifteen_second_schedule_visible_in_api` — chờ một interval thật |
-| 1 | Dashboard cập nhật định kỳ, xem lịch sử/nguồn | `dashboard.py` | Streamlit fragment 15s | PASS render; chưa xác minh bằng mắt | `test_dashboard_five_tabs_render_against_real_api`; checkbox auto refresh và tab 01 |
+| 1 | Dashboard cập nhật khi dữ liệu đổi, xem lịch sử/nguồn | `dashboard.py`, `api.py`, `service.py` | Polling fragment 15s, revision token | PASS AppTest; chưa xác minh bằng mắt | `test_dashboard_refresh.py` kiểm tra mặc định thủ công, tick không đổi chỉ gọi revision, lỗi polling an toàn, dữ liệu mới cập nhật |
 | 2 | Freshness ≤60 phút | `quality.py`, `settings.py` | Rule ngưỡng cấu hình | PASS | `test_system.py::test_quality_detects_scenario[late_data-freshness]` |
 | 2 | Completeness ≥98% | `quality.py`, `settings.py` | Tỷ lệ non-NULL | PASS | `test_quality_detects_scenario[null_values-completeness]` |
 | 2 | Uniqueness ≥99,5% | `quality.py`, `settings.py` | duplicated(order_id) | PASS | `test_quality_detects_scenario[duplicate_keys-uniqueness]` |
@@ -63,18 +63,20 @@
 
 Tất cả test dùng DB tạm. Các test kiểm tra reset chủ động chỉ thao tác DB tạm, không gọi reset database nhóm. Worker smoke test chuyển cả database, CSV, lock và log sang thư mục tạm. Test live scheduler chờ khoảng 15 giây; các test scheduler còn lại dùng đồng hồ giả hoặc chu kỳ 1 giây.
 
-## Kết quả mới nhất — sửa Task 5 ngày 22/11/2026
+## Kết quả mới nhất — sửa refresh dashboard ngày 27/11/2026
+
+Cập nhật hiển thị thời gian sau vòng toàn suite: `observability/display.py` chuyển UTC sang giờ Việt Nam UTC+7, dùng ở bảng lịch sử/DQ/SLA/timeline/cảnh báo/RCA. API/DB và JSON kỹ thuật giữ UTC. `tests/test_display_time.py` kiểm tra offset, chuyển ngày và AppTest không thay đổi API/DB. Phạm vi đã chạy lại cùng RCA/refresh: **31 passed, 2 warnings in 17.38s**. Kết quả toàn suite dưới đây được chạy trước sửa hiển thị thời gian; chưa chạy lại toàn suite sau thay đổi này.
 
 Kết quả chạy thật:
 
 ```text
 .venv/Scripts/python.exe -m pytest -q
-181 passed, 32 warnings in 55.17s
+183 passed, 2 warnings in 49.42s
 ```
 
-Bao gồm 162 test có sẵn (27 Task 1/system, 44 thống kê, 65 LLM, 11 notification, 14 workflow và 1 scheduler thật 15 giây) cùng 19 test AppTest/SLA mới. Không sửa assertion cũ hoặc bỏ qua test lỗi.
+Bao gồm 181 test có sẵn và 2 test mới trong `test_dashboard_refresh.py`. Kiểm tra mặc định tắt auto refresh, nút thủ công hoạt động, tick không có thay đổi chỉ gọi endpoint revision, timeout polling không crash và run mới cập nhật dữ liệu; revision đổi theo thao tác incident và SLA. Không sửa assertion cũ hoặc bỏ qua test lỗi.
 
-32 cảnh báo gồm 1 Starlette TestClient/httpx deprecation và 31 Streamlit/pandas/NumPy timedelta deprecation; không có test thất bại. Không ẩn cảnh báo để làm đẹp kết quả.
+2 cảnh báo gồm Starlette TestClient/httpx deprecation và Streamlit/pandas/NumPy timedelta deprecation. Không có test thất bại; không ẩn cảnh báo để làm đẹp kết quả.
 
 - Dependencies đã có trong `.venv`: Python 3.13.0rc2, pytest 9.2.0, Streamlit 1.65.0, FastAPI 0.143.0.
 - `compileall`: thành công; `pip check`: `No broken requirements found`; `git diff --check`: thành công.

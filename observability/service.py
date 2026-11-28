@@ -297,6 +297,19 @@ def summary():
         }
 
 
+def dashboard_revision():
+    """Small change token: no snapshots, RCA JSON or historical metrics loaded."""
+    with get_session() as session:
+        values = {}
+        for name, model in (("runs", PipelineRun), ("incidents", Incident),
+                            ("incident_events", IncidentEvent), ("alerts", Alert)):
+            count, latest = session.execute(select(func.count(), func.max(model.id))).one()
+            values[name] = [int(count), int(latest or 0)]
+        values["overdue_open"] = int(session.scalar(select(func.count()).select_from(Incident).where(
+            Incident.status != "RESOLVED", Incident.sla_deadline < now_utc())) or 0)
+        return values
+
+
 def trend(limit=100):
     runs = list(reversed(list_runs(limit)))
     return [{"run_id": run["id"], "time": run["finished_at"], "scenario": run["scenario"], "status": run["status"], "quality_score": run["quality_score"], "anomaly_score": run["ml_anomaly_score"], **{key: value for key, value in run["metrics"].items() if key != "ml"}} for run in runs]

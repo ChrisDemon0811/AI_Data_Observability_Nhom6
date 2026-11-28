@@ -1,5 +1,4 @@
 """Streamlit dashboard, all content in Vietnamese for a 5-member presentation."""
-from datetime import datetime
 
 import pandas as pd
 import plotly.express as px
@@ -9,6 +8,7 @@ import streamlit as st
 
 from observability.generator import SCENARIOS
 from observability.settings import API_BASE_URL
+from observability.display import format_timestamp
 
 st.set_page_config(page_title="AI Data Observability | Nhóm 6", page_icon="📊", layout="wide", initial_sidebar_state="expanded")
 
@@ -40,6 +40,11 @@ def request_api(path, method="GET", payload=None, timeout=25):
 
 
 def datatable(df, key=None):
+    df = df.copy()
+    for column in ("Thời điểm", "SLA", "started_at", "finished_at", "created_at",
+                   "resolved_at", "sla_deadline", "checked_at", "timestamp", "analyzed_at"):
+        if column in df.columns:
+            df[column] = df[column].map(format_timestamp)
     st.dataframe(df, hide_index=True, use_container_width=True, key=key)
 
 
@@ -80,7 +85,7 @@ def render_rca_report(item):
     if ai.get("fallback_reason_code"):
         st.caption("Lý do fallback: " + ai["fallback_reason_code"])
     if rca.get("analyzed_at"):
-        st.caption("Thời điểm phân tích: " + rca["analyzed_at"])
+        st.caption("Thời điểm phân tích: " + format_timestamp(rca["analyzed_at"]))
 
     st.markdown("**Tóm tắt phân tích hiện tại**")
     st.write(ai.get("summary", ai.get("conclusion", "Chưa có tóm tắt.")))
@@ -99,7 +104,7 @@ def render_rca_report(item):
 
     context = rca.get("analysis_context", {})
     with st.expander("Context đã lưu: log thực thi, lineage, metrics tổng hợp"):
-        st.caption("Execution logs là sự kiện pipeline lưu trong DB, không phải nội dung file scheduler.log. Upstream telemetry là DEMO mô phỏng.")
+        st.caption("Execution logs là sự kiện pipeline lưu trong DB, không phải nội dung file scheduler.log. Upstream telemetry là DEMO mô phỏng. JSON kỹ thuật giữ timestamp UTC gốc; thời gian giao diện dùng UTC+7.")
         if context:
             st.markdown("**Data lineage**")
             st.json(context.get("lineage", {}))
@@ -140,10 +145,11 @@ with st.sidebar:
     st.caption("Kết quả chạy sẽ tự sinh bản ghi, kiểm tra, cảnh báo và phân tích nguyên nhân.")
     st.divider()
     refresh_clicked = st.button("↻ Làm mới dashboard", use_container_width=True)
-    auto_refresh = st.checkbox("Tự làm mới mỗi 15 giây", value=True)
-    st.caption("Làm mới dữ liệu từ API; trạng thái worker kiểm chứng qua log và run mới.")
+    auto_refresh = st.checkbox("Tự làm mới mỗi 15 giây", value=False, key="auto_refresh")
+    st.caption("Mặc định làm mới bằng nút bấm. Bật tự động để kiểm tra thay đổi mỗi 15 giây; chỉ tải lại khi dữ liệu đổi.")
     st.markdown("[Tài liệu REST API / Swagger](http://localhost:8000/docs)")
     st.caption("API: " + API)
+    st.caption("Múi giờ hiển thị: Việt Nam (UTC+7). API và dữ liệu gốc giữ UTC.")
     st.divider()
     st.caption("Kỹ thuật: FastAPI · SQLAlchemy · Streamlit · scikit-learn · PostgreSQL/SQLite")
 
@@ -164,9 +170,22 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-@st.fragment(run_every="15s" if auto_refresh else None)
+@st.fragment(run_every="15s")
+def poll_dashboard_changes(reference_revision):
+    """A timer tick does not redraw charts/tabs while the data is unchanged."""
+    try:
+        revision = request_api("/api/dashboard/revision", timeout=3)
+    except RuntimeError:
+        st.caption("Chưa kiểm tra được dữ liệu mới; nội dung hiện tại được giữ nguyên.")
+        return
+    if revision != reference_revision:
+        st.rerun()
+
+
 def render_dashboard():
     try:
+        # Read before rendering to avoid missing changes committed during API reads.
+        revision = request_api("/api/dashboard/revision") if auto_refresh else None
         summary = request_api("/api/summary")
         runs = request_api("/api/runs?limit=100")
         incidents = request_api("/api/incidents?limit=100")
@@ -362,13 +381,13 @@ def render_dashboard():
             with l:
                 st.markdown("**Nhật ký xử lý (incident timeline)**")
                 for event in detail["events"]:
-                    st.markdown(f"**{event['type']}** · `{event['timestamp']}`  \n{event['message']}")
+                    st.markdown(f"**{event['type']}** · `{format_timestamp(event['timestamp'])}`  \n{event['message']}")
                     st.divider()
             with r:
                 st.markdown("**Thao tác người phụ trách**")
                 st.write("Trạng thái:", detail["status"])
                 st.write("Owner:", detail["owner"])
-                st.write("SLA deadline:", detail["sla_deadline"])
+                st.write("SLA deadline:", format_timestamp(detail["sla_deadline"]))
                 st.info("Bấm đóng incident chỉ mô phỏng thao tác nghiệp vụ. Trong hệ thống thật cần tái chạy kiểm tra đạt trước khi đóng.")
                 btn_a, btn_b = st.columns(2)
                 if btn_a.button("✓ Tiếp nhận", key="ack"):
@@ -392,7 +411,7 @@ def render_dashboard():
         if incidents:
             mock_alerts = [alert for alert in mock_alerts if alert["incident_id"] == incident_id]
         for alert in mock_alerts:
-            with st.expander(f"{alert['channel']} · {alert['delivery_status']} · {alert['created_at']}"):
+            with st.expander(f"{alert['channel']} · {alert['delivery_status']} · {format_timestamp(alert['created_at'])}"):
                 st.text(alert["message"])
         if not mock_alerts:
             st.caption("Chưa có notification mock cho incident này; run cũ không được tạo thông báo hồi tố.")
@@ -412,6 +431,8 @@ def render_dashboard():
         st.code("1. Thay generate_batch() bằng connector đọc PostgreSQL/API/Kafka.\n2. Chuẩn hóa data contracts và baseline theo từng dataset.\n3. Deploy backend + dashboard + scheduler qua Docker Compose.\n4. Bổ sung RBAC, quản lý secrets, giám sát và kênh gửi cảnh báo thực.\n5. Đánh giá AI RCA trên incident được chuyên gia gán nhãn.", language="text")
 
     st.caption("© Nhóm 6 — Ứng dụng demo môn học. Dữ liệu giao dịch được tạo ngẫu nhiên; không chứa dữ liệu cá nhân thật.")
+    if auto_refresh:
+        poll_dashboard_changes(revision)
 
 
 render_dashboard()

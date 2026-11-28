@@ -10,6 +10,7 @@ from .service import (
     list_runs, run_pipeline, seed_demo, summary, trend, update_incident,
     analyze_incident_rca,
     record_demo_remediation,
+    dashboard_revision,
 )
 from .database import init_db
 from .sources import SOURCE_MODELS, get_sources
@@ -42,6 +43,11 @@ def health():
 def configuration():
     return {"quality_thresholds": CHECK_LIMITS, "statistical_thresholds": STATISTICAL_LIMITS,
             "upstream_telemetry": "DEMO", "notifications": "MOCK_ONLY"}
+
+
+@app.get("/api/dashboard/revision")
+def revision():
+    return dashboard_revision()
 
 
 @app.post("/api/incidents/{incident_id}/analyze")

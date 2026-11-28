@@ -282,7 +282,7 @@ flowchart LR
     N --> DB
     R --> DB
     DB --> A
-    A --> U[Streamlit: 5 tab, tự làm mới mỗi 15 giây]
+    A --> U[Streamlit: 5 tab, kiểm tra thay đổi khi bật tự làm mới]
 ```
 
 Biểu đồ thể hiện luồng dữ liệu logic. DQ/ML được tính trên batch gốc trong bộ nhớ; snapshot và các kết quả được commit trong cùng transaction. KS đọc snapshot vừa flush và snapshot của run trước. LLM chỉ được gọi sau core commit, không giữ transaction ghi trong khi chờ dịch vụ ngoài.
@@ -368,7 +368,7 @@ Invoke-RestMethod -Method Post http://127.0.0.1:8000/api/incidents/1/analyze
 
 Chuẩn bị dependencies trước buổi demo. Không reset dữ liệu. Nếu database mới, `seed` tạo 10 run khỏe làm baseline; nếu đã có lịch sử thì giữ nguyên.
 
-1. **Task 1:** `./run_demo.bat 15`. Mở dashboard, để checkbox tự làm mới 15 giây. Chỉ hai run tự tăng, terminal/log và ba snapshot nguồn. API health chỉ chứng minh API, không chứng minh worker đang sống.
+1. **Task 1:** `./run_demo.bat 15`. Mở dashboard, bật checkbox tự làm mới 15 giây (mặc định tắt). Chỉ hai run tự tăng, terminal/log và ba snapshot nguồn. API health chỉ chứng minh API, không chứng minh worker đang sống.
 2. **Task 2:** Chạy `late_data`, `null_values`, `duplicate_keys`, `schema_change` từ sidebar; tab 02 chỉ observed/ngưỡng, PASS/FAIL, severity, run ID và thời điểm.
 3. **Task 3:** Chạy `distribution_drift` và `volume_spike`, chọn run ở tab 03. Chỉ Z-score amount/row_count, KS D/p-value và marker. Đối chiếu với IsolationForest và JS vẫn có sẵn. Run normal tiếp theo có thể có KS ALERT do so với run lỗi trước đó; giải thích phục hồi này.
 4. **Task 4:** Tab 04 chọn incident mới, mở email_mock/slack_mock. Nhấn **Tiếp nhận → Ghi nhận xử lý DEMO → Đóng incident**. Timeline giữ đủ thông báo và thao tác, không khẳng định đã sửa dữ liệu thật.
@@ -380,7 +380,11 @@ Dừng bằng Ctrl+C trong ba terminal, chờ worker hoàn tất job; Docker dù
 
 Các kết quả mới nhất được ghi tại [TASK_CHECKLIST.md](TASK_CHECKLIST.md), kèm tên test làm bằng chứng. Test dùng DB/CSV/log/lock tạm, không reset database nhóm. Có test worker thật hai lượt **15 giây**, test Streamlit `AppTest` render đủ 5 tab qua API FastAPI thật trong tiến trình test, và kiểm tra toàn bộ 8 scenario.
 
-Kết quả mới nhất ngày 22/11/2026: **181 passed, 32 warnings in 55.17s**. Gồm 162 test có sẵn và 19 test mới về render RCA/reanalysis/SLA. AppTest kiểm tra cả LLM thành công qua mock provider và trường hợp chưa có incident, chuyển từ LLM sang fallback, API lỗi và cập nhật dữ liệu sau phân tích lại. 32 warning deprecation thuộc hai nhóm Starlette/httpx và Streamlit/NumPy, không có test thất bại. `compileall`, `pip check`, `git diff --check` đều qua; API Task 1–4 vẫn qua TestClient, worker thật 15 giây vẫn qua test.
+Kết quả mới nhất ngày 27/11/2026: **183 passed, 2 warnings in 49.42s**. Gồm test RCA/reanalysis/SLA cùng hai test mới kiểm tra revision và làm mới dashboard. AppTest kiểm tra cả LLM thành công qua mock provider và trường hợp chưa có incident, chuyển từ LLM sang fallback, API lỗi và cập nhật dữ liệu sau phân tích lại. Hai warning deprecation thuộc Starlette/httpx và Streamlit/NumPy. `compileall`, `pip check`, `git diff --check` đều qua; API Task 1–4 và worker thật 15 giây vẫn qua test.
+
+Dashboard mặc định **tắt tự làm mới** để tránh giao diện mờ/nhấp nháy khi đang đọc. Bấm **Làm mới dashboard** khi cần, hoặc bật checkbox tự động: chỉ fragment nhỏ kiểm tra `/api/dashboard/revision` mỗi 15 giây, chỉ tải lại trang khi có run/event/alert mới hoặc trạng thái SLA thay đổi. Nếu kiểm tra thất bại, giữ nội dung hiện tại và thông báo ở vùng polling. Scheduler vẫn chạy độc lập dù checkbox tắt. Sau cập nhật mã, khởi động lại API và Streamlit để dùng endpoint mới.
+
+Thời gian hiển thị ở lịch sử run, DQ, SLA, incident timeline, cảnh báo và thời điểm phân tích RCA dùng **giờ Việt Nam UTC+7**, dạng `27/11/2026 19:59:26 (UTC+7)`. Database/API, payload nguồn và JSON kỹ thuật giữ UTC gốc. Ví dụ `2026-11-27T12:59:26Z` tương ứng `19:59:26` giờ Việt Nam, không phải dữ liệu bị lưu sai. Test phạm vi sửa múi giờ: `pytest tests/test_display_time.py tests/test_task5_dashboard.py tests/test_dashboard_refresh.py -q` → **31 passed, 2 warnings in 17.38s**; chưa chạy lại toàn suite sau thay đổi hiển thị này.
 
 Checksum DB demo trước/sau phiên sửa Task 5 giữ nguyên (`DF341657767D0588881BDAAEBA6662501FDEDD7882BDF5FD783352061CED83F3`). Không reset hoặc ghi DB nhóm trong kiểm thử; không sửa `.env` hay sử dụng key để gọi provider thật.
 
